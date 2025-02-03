@@ -21,12 +21,12 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "motor_encoder.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-
+Encoder_data n20_encoder;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -51,10 +51,13 @@ TIM_HandleTypeDef htim3;
 
 /* USER CODE BEGIN PV */
 int16_t error;
+int16_t error_integral;
 int16_t current_count;
 int16_t prev_count;
-uint16_t current_speed;
-uint16_t target_speed;
+int16_t pwm_output;
+int32_t current_speed;
+int32_t current_position;
+int32_t target_speed;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -221,9 +224,9 @@ static void MX_TIM3_Init(void)
 
   /* USER CODE END TIM3_Init 1 */
   htim3.Instance = TIM3;
-  htim3.Init.Prescaler = 0;
+  htim3.Init.Prescaler = 1000 - 1;
   htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim3.Init.Period = 65535;
+  htim3.Init.Period = 8000 - 1;
   htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   sConfig.EncoderMode = TIM_ENCODERMODE_TI12;
@@ -246,7 +249,9 @@ static void MX_TIM3_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN TIM3_Init 2 */
-
+  __HAL_TIM_ENABLE_IT(&htim3, TIM_IT_UPDATE);//HAL_TIM_Base_Start_IT(&htim3);
+  HAL_TIM_Encoder_Start_IT(&htim3, TIM_CHANNEL_ALL);
+  //
   /* USER CODE END TIM3_Init 2 */
 
 }
@@ -282,23 +287,32 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
-    if (htim->Instance == TIM2) { // Timer update interrupt
-        static int32_t last_encoder_count = 0;
-        int32_t count = encoder_count;
+	// Read Encoders
+	if (htim->Instance == TIM3){
+		update_encoder(&n20_encoder, htim);
+		current_speed    = n20_encoder.velocity;
+		current_position = n20_encoder.position;
+		current_count    = n20_encoder.prev_count;
+	}
+
+	//Control Motor Speed
+	else if (htim->Instance == TIM2) { // Timer update interrupt
+        static int32_t last_encoder_count = 0, prev_error = 0;
+        int32_t count = current_count;
         current_speed = count - last_encoder_count;
         last_encoder_count = count;
 
         int16_t error = target_speed - current_speed;
         int32_t p_term = KP * error;
-        integral += error;
+        error_integral += error;
 
-        if (integral > INTEGRAL_MAX) {
-        	integral = INTEGRAL_MAX;
+        if (error_integral > INTEGRAL_MAX) {
+        	error_integral = INTEGRAL_MAX;
         }
-        else if (integral < -INTEGRAL_MAX) {
-        	integral = -INTEGRAL_MAX;
+        else if (error_integral < -INTEGRAL_MAX) {
+        	error_integral = -INTEGRAL_MAX;
         }
-        int32_t i_term = KI * integral;
+        int32_t i_term = KI * error_integral;
 
         int32_t d_term = KD * (error - prev_error);
         prev_error = error;
@@ -312,8 +326,8 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
         	output = MIN_PWM;
         }
         pwm_output = (int16_t)output;
-        htim3.Instance->CCR1 = pwm_output;
-        //__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, pwm_output);
+        htim->Instance->CCR1 = pwm_output;
+        //__HAL_TIM_SET_COMPARE(htim, TIM_CHANNEL_1, pwm_output);
     }
 }
 /* USER CODE END 4 */
