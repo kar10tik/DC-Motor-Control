@@ -31,6 +31,7 @@ Encoder_data n20_encoder;
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define PPR 7 //Pulses per revolution for motor encoder
 #define KP 10
 #define KI 30
 #define KD 20
@@ -55,9 +56,9 @@ int16_t error_integral;
 int16_t current_count;
 int16_t prev_count;
 int16_t pwm_output;
-int32_t current_speed;
+int32_t current_speed; //RPM
 int32_t current_position;
-int32_t target_speed;
+int32_t target_speed; //RPM
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -299,7 +300,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 	else if (htim->Instance == TIM2) { // Timer update interrupt
         static int32_t last_encoder_count = 0, prev_error = 0;
         int32_t count = current_count;
-        current_speed = count - last_encoder_count;
+        current_speed = (count - last_encoder_count)*30/PPR;
         last_encoder_count = count;
 
         int16_t error = target_speed - current_speed;
