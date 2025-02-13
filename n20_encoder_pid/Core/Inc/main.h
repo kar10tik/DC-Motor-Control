@@ -71,7 +71,14 @@ void Error_Handler(void);
 #define DIR_2_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
-
+#define PPR 7 //Pulses per revolution for motor encoder
+#define KP 10
+#define KI 30
+#define KD 20
+#define PID_SCALE 100 // Scale factor for Kp, Ki, Kd
+#define MAX_PWM 255  // Maximum PWM value
+#define MIN_PWM 0    // Minimum PWM value
+#define INTEGRAL_MAX 256 // Saturation for integral term
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus

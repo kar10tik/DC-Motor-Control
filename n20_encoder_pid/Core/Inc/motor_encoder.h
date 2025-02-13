@@ -7,7 +7,7 @@
 typedef struct{
 	int32_t position;
 	int32_t velocity;
-	uint32_t prev_count;
+	uint32_t count;
 } Encoder_data;
 
 void update_encoder(Encoder_data *encoder_value, TIM_HandleTypeDef *htim);

@@ -22,23 +22,17 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "motor_encoder.h"
+#include "pid.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-Encoder_data n20_encoder;
+volatile Encoder_data n20_encoder;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define PPR 7 //Pulses per revolution for motor encoder
-#define KP 10
-#define KI 30
-#define KD 20
-#define PID_SCALE 100 // Scale factor for Kp, Ki, Kd
-#define MAX_PWM 255  // Maximum PWM value
-#define MIN_PWM 0    // Minimum PWM value
-#define INTEGRAL_MAX 256 // Saturation for integral term
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -47,16 +41,15 @@ Encoder_data n20_encoder;
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim3;
 
 /* USER CODE BEGIN PV */
-int16_t error;
-int16_t error_integral;
-int16_t current_count;
-int16_t prev_count;
+volatile uint32_t current_ms, prev_ms; //Used to update speed from position using Hal_GetTick
+int16_t current_count; //Current encoder count
+int16_t prev_count; //Previous encoder count
 int16_t pwm_output;
-int32_t current_speed; //RPM
 int32_t current_position;
 int32_t target_speed; //RPM
 /* USER CODE END PV */
@@ -66,6 +59,7 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_TIM2_Init(void);
+static void MX_TIM1_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -106,8 +100,15 @@ int main(void)
   MX_GPIO_Init();
   MX_TIM3_Init();
   MX_TIM2_Init();
+  MX_TIM1_Init();
   /* USER CODE BEGIN 2 */
-
+  //1000 rpm motor can take at least 60ms to rotate
+  HAL_TIM_Encoder_Start(&htim3, TIM_CHANNEL_ALL); //TIM_CHANNEL_ALL);
+  __HAL_TIM_ENABLE_IT(&htim3, TIM_IT_UPDATE);//HAL_TIM_Base_Start_IT(&htim3);
+  // Start PWM Generation
+  HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);
+  // Timer for speed updates
+  HAL_TIM_Base_Start_IT(&htim1);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -155,6 +156,52 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
+}
+
+/**
+  * @brief TIM1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM1_Init(void)
+{
+
+  /* USER CODE BEGIN TIM1_Init 0 */
+
+  /* USER CODE END TIM1_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM1_Init 1 */
+
+  /* USER CODE END TIM1_Init 1 */
+  htim1.Instance = TIM1;
+  htim1.Init.Prescaler = 0;
+  htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim1.Init.Period = 65535;
+  htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim1.Init.RepetitionCounter = 0;
+  htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim1, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim1, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM1_Init 2 */
+
+  /* USER CODE END TIM1_Init 2 */
+
 }
 
 /**
@@ -227,7 +274,7 @@ static void MX_TIM3_Init(void)
   htim3.Instance = TIM3;
   htim3.Init.Prescaler = 1000 - 1;
   htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim3.Init.Period = 8000 - 1;
+  htim3.Init.Period = 400 - 1;
   htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   sConfig.EncoderMode = TIM_ENCODERMODE_TI12;
@@ -250,8 +297,7 @@ static void MX_TIM3_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN TIM3_Init 2 */
-  __HAL_TIM_ENABLE_IT(&htim3, TIM_IT_UPDATE);//HAL_TIM_Base_Start_IT(&htim3);
-  HAL_TIM_Encoder_Start_IT(&htim3, TIM_CHANNEL_ALL);
+
   //
   /* USER CODE END TIM3_Init 2 */
 
@@ -288,48 +334,16 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
-	// Read Encoders
-	if (htim->Instance == TIM3){
+	// Control Motor Speed
+	if (htim->Instance == TIM1) { // Timer update interrupt
 		update_encoder(&n20_encoder, htim);
-		current_speed    = n20_encoder.velocity;
-		current_position = n20_encoder.position;
-		current_count    = n20_encoder.prev_count;
+
 	}
-
-	//Control Motor Speed
 	else if (htim->Instance == TIM2) { // Timer update interrupt
-        static int32_t last_encoder_count = 0, prev_error = 0;
-        int32_t count = current_count;
-        current_speed = (count - last_encoder_count)*30/PPR;
-        last_encoder_count = count;
-
-        int16_t error = target_speed - current_speed;
-        int32_t p_term = KP * error;
-        error_integral += error;
-
-        if (error_integral > INTEGRAL_MAX) {
-        	error_integral = INTEGRAL_MAX;
-        }
-        else if (error_integral < -INTEGRAL_MAX) {
-        	error_integral = -INTEGRAL_MAX;
-        }
-        int32_t i_term = KI * error_integral;
-
-        int32_t d_term = KD * (error - prev_error);
-        prev_error = error;
-
-        int32_t output = (p_term + i_term + d_term) / PID_SCALE;
-
-        if (output > MAX_PWM) {
-        	output = MAX_PWM;
-        }
-        else if (output < MIN_PWM) {
-        	output = MIN_PWM;
-        }
-        pwm_output = (int16_t)output;
-        htim->Instance->CCR1 = pwm_output;
+		pid_pwm(n20_encoder, 1, htim);;
+	}
         //__HAL_TIM_SET_COMPARE(htim, TIM_CHANNEL_1, pwm_output);
-    }
+
 }
 /* USER CODE END 4 */
 

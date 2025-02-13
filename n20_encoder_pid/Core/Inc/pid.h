@@ -1,7 +1,8 @@
 #include "main.h"
+#include "motor_encoder.h"
 
 #ifndef INC_PID_H
 #define INC_PID_H
 
-int32_t pid(TIM_HandleTypeDef htim);
+void pid_pwm(Encoder_data encoder_value, int32_t target_speed, TIM_HandleTypeDef* htim);
 #endif
