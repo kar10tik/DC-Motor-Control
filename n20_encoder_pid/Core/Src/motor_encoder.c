@@ -1,5 +1,6 @@
 #include "motor_encoder.h"
 
+extern volatile _Bool speed_compute_flag;
 /**
  * @fn void update_encoder(Encoder_data*, TIM_HandleTypeDef*)
  * @brief
@@ -35,6 +36,7 @@ void update_encoder(Encoder_data *encoder_value, TIM_HandleTypeDef *htim){
 	encoder_value->position += encoder_value->velocity;
 		// Store last encoder count
 	encoder_value->count = temp_counter;
+	speed_compute_flag = 0;
 }
 
 /**

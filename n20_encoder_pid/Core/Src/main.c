@@ -46,6 +46,7 @@ TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim3;
 
 /* USER CODE BEGIN PV */
+volatile _Bool speed_compute_flag, pid_compute_flag;
 volatile uint32_t current_ms, prev_ms; //Used to update speed from position using Hal_GetTick
 int16_t current_count; //Current encoder count
 int16_t prev_count; //Previous encoder count
@@ -115,6 +116,13 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+	  if (speed_compute_flag){
+		  update_encoder(&n20_encoder, &htim1);
+	  }
+	  if (pid_compute_flag){
+		  pid_pwm(n20_encoder, 1, &htim2);
+	  }
+
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -223,9 +231,9 @@ static void MX_TIM2_Init(void)
 
   /* USER CODE END TIM2_Init 1 */
   htim2.Instance = TIM2;
-  htim2.Init.Prescaler = 72 - 1;
+  htim2.Init.Prescaler = 19;
   htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim2.Init.Period = 65535;
+  htim2.Init.Period = 15;
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_PWM_Init(&htim2) != HAL_OK)
@@ -336,11 +344,11 @@ static void MX_GPIO_Init(void)
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 	// Control Motor Speed
 	if (htim->Instance == TIM1) { // Timer update interrupt
-		update_encoder(&n20_encoder, htim);
+		speed_compute_flag = 1;
 
 	}
 	else if (htim->Instance == TIM2) { // Timer update interrupt
-		pid_pwm(n20_encoder, 1, htim);;
+		pid_compute_flag = 1;
 	}
         //__HAL_TIM_SET_COMPARE(htim, TIM_CHANNEL_1, pwm_output);
 

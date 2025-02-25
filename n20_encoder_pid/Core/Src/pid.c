@@ -1,5 +1,7 @@
 #include "pid.h"
 #include "motor_encoder.h"
+
+extern volatile _Bool pid_compute_flag;
 /**
  * @fn int16_t pid_pwm(Encoder_data)
  * @brief
@@ -41,4 +43,5 @@ void pid_pwm(Encoder_data n20_encoder, int32_t target_speed, TIM_HandleTypeDef* 
     	output = MIN_PWM;
     }
     htim->Instance->CCR1 = output;
+    pid_compute_flag = 0;
 }
